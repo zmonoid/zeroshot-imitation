@@ -20,9 +20,43 @@ This is the implementation for the [ICLR 2018 paper Zero Shot Visual Imitation](
         Year = {2018}
     }
 
+### Install and RUN
+
+It takes time to fix bugs to run original version. Here is a quite way:
+1. Pull the container to solve all environment problems: ```docker pull zhoubinxyz/caffe-cu10```.
+2. Pull the bug free version: ```git clone zmonoid/zeroshot-imitation```.
+3. Get the container terminal: ```cd zeroshot-imitation; nvidia-docker run -it --volume "./":/workspace zhoubinxyz/caffe-cu10```
+4. Prepare datasets: 
+    4.1 Data can be downloaded at [google drive link](https://drive.google.com/file/d/1pnX8gGqs5EQVjGy4Z6FZ5oZ9noDHlC_8/view)
+    4.2 Extract data so that it looks like ```./data/datasets/rope9/run00/*.jpg```
+    4.3 Run the ipython notebook at ```./data/datasets/rope9/rope.ipynb``` to make train/val/test image lists and action lmdb
+    4.4 Convert image data into lmdb use ```convert_imageset ./data/datasets/rope9/train_img_before.txt ./data/datasets/rope9/train/image_before``` etc.
+    
+    After data conversion, it should looks like:
+    ```
+    --data\datasets\rope9
+        --train
+            --image_before
+            --image_after
+            --poke
+        --val
+            --image_before
+            --image_after
+            --poke
+        ...
+    ```
+5. Train the model: ```python train.py```
+
+
+
+
 ### 1) Installation and Usage
 
 #### Requirements
+
+
+
+
 
 ```Shell
 git clone -b master --single-branch https://github.com/pathak22/zeroshot-imitation.git
