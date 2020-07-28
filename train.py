@@ -1,5 +1,7 @@
 import sys
 import os
+os.environ['CUDA_VISIBLE_DEVICES']='9'
+os.environ['LD_LIBRARY_PATH'] += ':/usr/local/cuda/lib64:/usr/local/cuda/lib64/stubs'
 PD = os.getcwd() + '/caffe/python/'
 if PD not in sys.path:
     sys.path.append(PD)
@@ -12,7 +14,12 @@ import tensorflow as tf
 import time
 import matplotlib.pyplot as plt
 
-slim = tf.contrib.slim
+
+import tensorflow.compat.v1 as tf
+tf.disable_v2_behavior()
+
+# slim = tf.contrib.slim
+import tf_slim as slim
 from nets import alexnet_geurzhoy
 
 from tensorflow.python.ops import math_ops
@@ -67,7 +74,7 @@ class RopeImitator():
         self.unfreeze_time = unfreeze_time
         self.autoencode = autoencode
         self.gtAction = gtAction
-        self.name = '{0}_{1}_{2}_{3}_{4}_{5}K_{6}_{7}'.format(name, 'fwdconsist' + str(fwd_consist), 'baselinereg' + str(baseline_reg), 
+        self.name = '{0}_{1}_{2}_{3}_{4}_{5}K_{6}_{7}'.format(name, 'fwdconsist' + str(fwd_consist), 'baselinereg' + str(baseline_reg),
             'deconv_lr' + str(deconv_lr), 'autoencode' + str(autoencode),
             'unfreeze' + str(int(unfreeze_time/1000.)), 'softmax' + str(softmaxBackprop),
             'gtAction' + str(gtAction))
@@ -91,44 +98,47 @@ class RopeImitator():
         latent_goal_image, latent_conv5_goal_image = alexnet_geurzhoy.network(self.goal_image_ph, trainable=True, num_outputs=ENCODING_SIZE, reuse=True)
 
         # concatenate the latent representations and share information
-        features = tf.concat(1, [latent_image, latent_goal_image])
+        features = tf.concat([latent_image, latent_goal_image], 1)
 
-        with tf.variable_scope("concat_fc"):
+        with tf.variable_scope("concat_fc", reuse=tf.AUTO_REUSE):
             x = tf.nn.relu(features)
             x = slim.fully_connected(x, FEAT_SIZE, scope="concat_fc")
 
         #################################
         # ACTION PREDICTION
         #################################
-        location_embedding = init_weights('location_embedding', [LOCATION_BINS, LOCATION_EMBEDDING_SIZE])
-        theta_embedding = init_weights('theta_embedding', [THETA_BINS, THETA_EMBEDDING_SIZE])
+        with tf.variable_scope("", reuse=tf.AUTO_REUSE):
+            location_embedding = init_weights('location_embedding', [LOCATION_BINS, LOCATION_EMBEDDING_SIZE])
+            theta_embedding = init_weights('theta_embedding', [THETA_BINS, THETA_EMBEDDING_SIZE])
 
         # layer for predicting X, Y
-        with tf.variable_scope('location_pred'):
+        with tf.variable_scope('location_pred', reuse=tf.AUTO_REUSE):
             loc_network_layers = [FEATURE_SIZE, 200, 200, LOCATION_BINS]
             location_pred = make_network(x, loc_network_layers)
-            location_loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(location_pred, self.location_ph))
+            location_loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=location_pred, labels=self.location_ph))
 
             location_sample = math_ops.argmax(tf.cond(self.is_training_ph, lambda: self.location_ph, lambda: location_pred), 1)
             location_embed = embedding_ops.embedding_lookup(location_embedding, location_sample)
 
         # layer for predicting theta
-        with tf.variable_scope('theta_pred'):
-            x_with_loc = tf.concat(1, [x, location_embed])
+        with tf.variable_scope('theta_pred', reuse=tf.AUTO_REUSE):
+            x_with_loc = tf.concat([x, location_embed], 1)
             theta_network_layers = [FEATURE_SIZE + LOCATION_EMBEDDING_SIZE, 200, 200, THETA_BINS]
             theta_pred = make_network(x_with_loc, theta_network_layers)
-            theta_loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(theta_pred, self.theta_ph))
+            # theta_loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(theta_pred, self.theta_ph))
+            theta_loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=theta_pred, labels=self.theta_ph))
 
             theta_sample = math_ops.argmax(tf.cond(self.is_training_ph, lambda: self.theta_ph, lambda: theta_pred), 1)
             theta_embed = embedding_ops.embedding_lookup(theta_embedding, theta_sample)
 
         # layer for predicting length of movement
-        with tf.variable_scope('length_pred'):
-            x_with_loc_theta = tf.concat(1, [x_with_loc, theta_embed])
+        with tf.variable_scope('length_pred', reuse=tf.AUTO_REUSE):
+            x_with_loc_theta = tf.concat([x_with_loc, theta_embed], 1)
             length_network_layers = [FEATURE_SIZE + LOCATION_EMBEDDING_SIZE + THETA_EMBEDDING_SIZE, 200, 200, LENGTH_BINS]
             length_pred = make_network(x_with_loc_theta, length_network_layers)
-            length_softmax = tf.nn.softmax_cross_entropy_with_logits(length_pred, self.length_ph)
-            length_loss = tf.reduce_mean(length_softmax * self.ignore_flag_ph)
+            # length_softmax = tf.nn.softmax_cross_entropy_with_logits(length_pred, self.length_ph)
+            # length_loss = tf.reduce_mean(length_softmax * self.ignore_flag_ph)
+            length_loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=length_pred, labels=self.length_ph))
 
         # add to collections for retrieval
         tf.add_to_collection('location_logit', location_pred)
@@ -156,7 +166,7 @@ class RopeImitator():
         # FORWARD CONSISTENCY
         #################################
         if self.fwd_consist:
-            with tf.variable_scope('fwd_consist'):
+            with tf.variable_scope('fwd_consist', reuse=tf.AUTO_REUSE):
                 if softmaxBackprop:
                     location_pred = tf.nn.softmax(location_pred)
                     theta_pred = tf.nn.softmax(theta_pred)
@@ -165,18 +175,18 @@ class RopeImitator():
                 # baseline regularization => gradients flow only to alexnet, not action pred
                 if baseline_reg:
                     print('baseline')
-                    action_embed = tf.concat(1, [self.location_ph, self.theta_ph, self.length_ph])
+                    action_embed = tf.concat([self.location_ph, self.theta_ph, self.length_ph], 1)
                 else:
                     # fwd_consist => gradients flow through action prediction
                     latent_conv5_image = tf.stop_gradient(latent_conv5_image)
                     action_embed = tf.cond(self.gtAction_ph,
-                        lambda: tf.concat(1, [self.location_ph, self.theta_ph, self.length_ph]),
-                        lambda: tf.concat(1, [location_pred, theta_pred, length_pred]))
+                        lambda: tf.concat([self.location_ph, self.theta_ph, self.length_ph], 1),
+                        lambda: tf.concat([location_pred, theta_pred, length_pred], 1))
 
                 action_embed = slim.fully_connected(action_embed, 363)
                 action_embed = tf.reshape(action_embed, [-1, 11, 11, 3])
                 # concat along depth
-                fwd_features = tf.concat(3, [latent_conv5_image, action_embed])
+                fwd_features = tf.concat([latent_conv5_image, action_embed], 3)
                 # deconvolution
                 batch_size = tf.shape(fwd_features)[0]
 
@@ -318,9 +328,10 @@ class RopeImitator():
 
                 cum_loc_acc, cum_theta_acc, cum_len_acc = 0, 0, 0
 
-                for _ in range(10):
+                for nx in range(10):
                     val_dict = self.get_batch(100, False)
                     loc_acc, theta_acc, len_acc = self.sess.run([self.loc_accuracy, self.theta_accuracy, self.length_accuracy], feed_dict=val_dict)
+                    # loc_acc, theta_acc, len_acc = 0, 0, 0
 
                     cum_loc_acc += loc_acc
                     cum_theta_acc += theta_acc
@@ -373,3 +384,8 @@ class RopeImitator():
         axes[1, 2].set_title('train_lens')
         axes[1, 2].hist(np.concatenate(t_len))
         plt.show()
+
+if __name__ == '__main__':
+    r = RopeImitator('name', fwd_consist=True)
+    r.train(10)
+

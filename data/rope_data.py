@@ -37,7 +37,7 @@ for y in range(240):
 
 SEGMENTATION_SIZE = 20
 def resize_segmentation(img):
-    return scipy.misc.imresize(img, (SEGMENTATION_SIZE, SEGMENTATION_SIZE))
+    return scipy.misc.imresize(img.astype(np.float32), (SEGMENTATION_SIZE, SEGMENTATION_SIZE))
 
 def rectify(img):
     """Transpose database image to [Y, X, channels] (480x640x3)"""
@@ -79,8 +79,8 @@ def get_data(dataset, shuffle=True):
             if c_data:
                 cropped_images, cropped_poke = c_data
                 img_before, img_after, s_before, s_after = cropped_images
-                s_b = resize_segmentation(s_before)
-                s_a = resize_segmentation(s_after)
+                s_b = resize_segmentation(s_before).astype(np.bool)
+                s_a = resize_segmentation(s_after).astype(np.bool)
                 im = np.sum(abs(img_before.astype(float) - img_after.astype(float)), 2) > 100
                 diff = np.sum(im) # rough measure of number of pixels different between the two images
                 if diff > 1000:
@@ -92,16 +92,17 @@ def get_data(dataset, shuffle=True):
 
 TRAIN_DATA = "rope9/train"
 TEST_DATA = "rope9/test"
+VAL_DATA = "rope9/val"
 
 if os.path.exists(DATASET_LOCATION): # don't fail import on machine where data not present
     print('Data loaded')
-    print(TRAIN_DATA)
-    SOURCES = {"train": get_data(TRAIN_DATA), "val": get_data(TEST_DATA)}
+    SOURCES = {"train": get_data(TRAIN_DATA), "val": get_data(VAL_DATA), "test": get_data(TEST_DATA)}
 
 def load_dataset(name):
     print "Loading dataset:", name
     SOURCES["train"] = get_data(name + "/train")
-    # SOURCES["val"] = get_data(name + "/test")
+    SOURCES["val"] = get_data(name + "/val")
+    # SOURCES["test"] = get_data(name + "/test")
 
 def get_size(dataset):
     s = 0
@@ -154,16 +155,23 @@ if __name__ == "__main__":
     #     if i % 1000 == 0:
     #         print i
     t = 0
-    # for image_before, image_after, poke in get_data(TRAIN_DATA):
-    #     t += 1
-    #     print poke
-    # print t
+    for datas in get_data(TRAIN_DATA):
+        img_before, img_after, s_b, s_a, cropped_poke = datas
+        t += 1
+	break
+    print t
+    t = 0
+    for datas in get_data(VAL_DATA):
+        img_before, img_after, s_b, s_a, cropped_poke = datas
+        t += 1
+        print cropped_poke
+    print t
 
     # for i, _ in enumerate(get_data(TEST_DATA, True)):
     #     pass
-    s = get_size(TRAIN_DATA)
-    print "train data size", s
+    # s = get_size(TRAIN_DATA)
+    # print "train data size", s
     # for i, _ in enumerate(get_data(TRAIN_DATA, True)):
     #     pass
-    s = get_size(TEST_DATA)
-    print "test data size", s
+    # s = get_size(TEST_DATA)
+    # print "test data size", s

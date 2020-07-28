@@ -29,8 +29,13 @@ from scipy.ndimage import filters
 import urllib
 from numpy import random
 
-import tensorflow as tf
-slim = tf.contrib.slim
+# import tensorflow as tf
+
+import tensorflow.compat.v1 as tf
+tf.disable_v2_behavior()
+
+# slim = tf.contrib.slim
+import tf_slim as slim
 
 train_x = zeros((1, 227,227,3)).astype(float32)
 train_y = zeros((1, 1000))
@@ -81,10 +86,12 @@ def conv(input, kernel, biases, k_h, k_w, c_o, s_h, s_w,  padding="VALID", group
     if group==1:
         conv = convolve(input, kernel)
     else:
-        input_groups = tf.split(3, group, input)
-        kernel_groups = tf.split(3, group, kernel)
+        input_groups = tf.split(input, group, 3)
+        # input_groups = tf.split(3, group, input)
+        # kernel_groups = tf.split(3, group, kernel)
+        kernel_groups = tf.split(kernel, group, 3)
         output_groups = [convolve(i, k) for i,k in zip(input_groups, kernel_groups)]
-        conv = tf.concat(3, output_groups)
+        conv = tf.concat(output_groups, 3)
     return tf.reshape(tf.nn.bias_add(conv, biases), [-1]+conv.get_shape().as_list()[1:])
 
 
@@ -96,7 +103,7 @@ def var(name, data, trainable):
     # return tf.get_variable(name, shape=data.shape, initializer=trunc_normal(0.01), trainable=trainable)
 
 def network(x, trainable=False, reuse=None, num_outputs=100):
-    with tf.variable_scope("alexnet", reuse=reuse) as sc:
+    with tf.variable_scope("alexnet", reuse=tf.AUTO_REUSE) as sc:
         print "REUSE", reuse
         #conv1
         #conv(11, 11, 96, 4, 4, padding='VALID', name='conv1')

@@ -144,7 +144,10 @@ class SensorLMDB(object):
             for key, sensor_datum in cursor:
                 datum = caffe.proto.caffe_pb2.Datum()
                 datum.ParseFromString(sensor_datum)
-                vec = caffe.io.datum_to_array(datum)
+
+                vec = str(datum.data)
+                vec = np.array([float(x) for x in vec.split(' ')]).reshape(-1, 1, 1)
+
                 yield vec
 
     def iterator(self):
@@ -166,10 +169,18 @@ def test():
 
 if __name__ == "__main__":
     # db = ImageLMDB("/home/ashvin/data/poke/depth_after")
-    db = ImageLMDB("rope9/train/image_after")
-    db2 = SensorLMDB('rope9/train/poke')
-    db.info()
+
+    print("==========")
+    db2 = SensorLMDB('datasets/rope9/poke')
     db2.info()
+
+    print("==========")
+    db = ImageLMDB("datasets/rope9/img_after")
+    db.info()
+
+    print("=========")
+    db3 = SensorLMDB('datasets/rope9/img_before')
+    db3.info()
     # db.play(40)
 
     # vel_db = SensorLMDB("/home/ashvin/data/poke/")
